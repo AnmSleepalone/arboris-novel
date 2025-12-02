@@ -3,8 +3,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
-    image: tiechui251/arboris-app:latest
-    container_name: arboris-app
+    image: sleepalone/xiaoshuo:latest
+    container_name: xiaoshuo
     ports:
       - "${APP_PORT:-80}:80"
     environment:

@@ -6,7 +6,7 @@ FROM node:20-slim AS frontend-builder
 WORKDIR /frontend
 
 # 配置 npm 使用中国镜像源
-RUN npm config set registry https://registry.npmmirror.com
+#RUN npm config set registry https://registry.npmmirror.com
 
 # 复制前端依赖文件
 COPY frontend/package*.json ./
@@ -26,8 +26,8 @@ RUN npm run build
 FROM python:3.11-slim
 
 # 配置 apt 使用中国镜像源
-RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
-    sed -i 's|security.debian.org/debian-security|mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources
+#RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list.d/debian.sources && \
+#    sed -i 's|security.debian.org/debian-security|mirrors.tuna.tsinghua.edu.cn/debian-security|g' /etc/apt/sources.list.d/debian.sources
 
 WORKDIR /app
 
@@ -42,7 +42,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 配置 pip 使用中国镜像源
-RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+#RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 复制后端依赖文件
 COPY backend/requirements.txt .
