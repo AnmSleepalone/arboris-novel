@@ -1,5 +1,8 @@
 services:
   app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
     image: tiechui251/arboris-app:latest
     container_name: arboris-app
     ports:
@@ -69,7 +72,7 @@ services:
       retries: 3
       start_period: 90s
 
-  # MySQL 数据库服务（通过 profile mysql 启用）
+  # MySQL 数据库服务(通过 profile mysql 启用)
   db:
     image: mysql:8.0
     container_name: arboris-db

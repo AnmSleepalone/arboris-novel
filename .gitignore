@@ -6,6 +6,7 @@
 *.pyc
 /backend/dist
 /backend/storage/*.db
+./.idea
 
 # 环境变量文件
 .env
@@ -25,3 +26,4 @@ __pycache__/
 *.pyo
 *.pyd
 *.db
+/.idea

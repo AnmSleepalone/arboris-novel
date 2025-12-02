@@ -83,89 +83,135 @@ class LLMService:
         user_id: Optional[int],
         timeout: float,
         response_format: Optional[str] = None,
+        auto_continue: bool = True,
+        max_continuations: int = 5,
     ) -> str:
+        """流式收集 LLM 响应，支持自动续写。
+
+        Args:
+            messages: 对话消息列表
+            temperature: 生成温度
+            user_id: 用户 ID
+            timeout: 超时时间（秒）
+            response_format: 响应格式（如 json_object）
+            auto_continue: 是否启用自动续写（当响应被截断时自动继续）
+            max_continuations: 最大续写次数，防止无限循环
+        """
         config = await self._resolve_llm_config(user_id)
         client = LLMClient(api_key=config["api_key"], base_url=config.get("base_url"))
 
-        chat_messages = [ChatMessage(role=msg["role"], content=msg["content"]) for msg in messages]
-
         full_response = ""
-        finish_reason = None
+        continuation_count = 0
+        current_messages = list(messages)  # 复制消息列表
 
-        logger.info(
-            "Streaming LLM response: model=%s user_id=%s messages=%d",
-            config.get("model"),
-            user_id,
-            len(messages),
-        )
+        while True:
+            chat_messages = [ChatMessage(role=msg["role"], content=msg["content"]) for msg in current_messages]
+            segment_response = ""
+            finish_reason = None
 
-        try:
-            async for part in client.stream_chat(
-                messages=chat_messages,
-                model=config.get("model"),
-                temperature=temperature,
-                timeout=int(timeout),
-                response_format=response_format,
-            ):
-                if part.get("content"):
-                    full_response += part["content"]
-                if part.get("finish_reason"):
-                    finish_reason = part["finish_reason"]
-        except InternalServerError as exc:
-            detail = "AI 服务内部错误，请稍后重试"
-            response = getattr(exc, "response", None)
-            if response is not None:
-                try:
-                    payload = response.json()
-                    error_data = payload.get("error", {}) if isinstance(payload, dict) else {}
-                    detail = error_data.get("message_zh") or error_data.get("message") or detail
-                except Exception:
+            logger.info(
+                "Streaming LLM response: model=%s user_id=%s messages=%d continuation=%d",
+                config.get("model"),
+                user_id,
+                len(current_messages),
+                continuation_count,
+            )
+
+            try:
+                async for part in client.stream_chat(
+                    messages=chat_messages,
+                    model=config.get("model"),
+                    temperature=temperature,
+                    timeout=int(timeout),
+                    response_format=response_format,
+                ):
+                    if part.get("content"):
+                        segment_response += part["content"]
+                    if part.get("finish_reason"):
+                        finish_reason = part["finish_reason"]
+            except InternalServerError as exc:
+                detail = "AI 服务内部错误，请稍后重试"
+                response = getattr(exc, "response", None)
+                if response is not None:
+                    try:
+                        payload = response.json()
+                        error_data = payload.get("error", {}) if isinstance(payload, dict) else {}
+                        detail = error_data.get("message_zh") or error_data.get("message") or detail
+                    except Exception:
+                        detail = str(exc) or detail
+                else:
                     detail = str(exc) or detail
-            else:
-                detail = str(exc) or detail
-            logger.error(
-                "LLM stream internal error: model=%s user_id=%s detail=%s",
-                config.get("model"),
-                user_id,
-                detail,
-                exc_info=exc,
-            )
-            raise HTTPException(status_code=503, detail=detail)
-        except (httpx.RemoteProtocolError, httpx.ReadTimeout, APIConnectionError, APITimeoutError) as exc:
-            if isinstance(exc, httpx.RemoteProtocolError):
-                detail = "AI 服务连接被意外中断，请稍后重试"
-            elif isinstance(exc, (httpx.ReadTimeout, APITimeoutError)):
-                detail = "AI 服务响应超时，请稍后重试"
-            else:
-                detail = "无法连接到 AI 服务，请稍后重试"
-            logger.error(
-                "LLM stream failed: model=%s user_id=%s detail=%s",
-                config.get("model"),
-                user_id,
-                detail,
-                exc_info=exc,
-            )
-            raise HTTPException(status_code=503, detail=detail) from exc
+                logger.error(
+                    "LLM stream internal error: model=%s user_id=%s detail=%s",
+                    config.get("model"),
+                    user_id,
+                    detail,
+                    exc_info=exc,
+                )
+                raise HTTPException(status_code=503, detail=detail)
+            except (httpx.RemoteProtocolError, httpx.ReadTimeout, APIConnectionError, APITimeoutError) as exc:
+                if isinstance(exc, httpx.RemoteProtocolError):
+                    detail = "AI 服务连接被意外中断，请稍后重试"
+                elif isinstance(exc, (httpx.ReadTimeout, APITimeoutError)):
+                    detail = "AI 服务响应超时，请稍后重试"
+                else:
+                    detail = "无法连接到 AI 服务，请稍后重试"
+                logger.error(
+                    "LLM stream failed: model=%s user_id=%s detail=%s",
+                    config.get("model"),
+                    user_id,
+                    detail,
+                    exc_info=exc,
+                )
+                raise HTTPException(status_code=503, detail=detail) from exc
 
-        logger.debug(
-            "LLM response collected: model=%s user_id=%s finish_reason=%s preview=%s",
-            config.get("model"),
-            user_id,
-            finish_reason,
-            full_response[:500],
-        )
+            full_response += segment_response
 
-        if finish_reason == "length":
-            logger.warning(
-                "LLM response truncated: model=%s user_id=%s response_length=%d",
+            logger.debug(
+                "LLM response segment: model=%s user_id=%s finish_reason=%s segment_len=%d total_len=%d",
                 config.get("model"),
                 user_id,
+                finish_reason,
+                len(segment_response),
                 len(full_response),
             )
-            raise HTTPException(
-                status_code=500,
-                detail=f"AI 响应因长度限制被截断（已生成 {len(full_response)} 字符），请缩短输入内容或调整模型参数"
-            )
+
+            # 检查是否需要续写
+            if finish_reason == "length" and auto_continue and continuation_count < max_continuations:
+                continuation_count += 1
+                logger.info(
+                    "LLM response truncated, auto-continuing: model=%s user_id=%s continuation=%d/%d current_len=%d",
+                    config.get("model"),
+                    user_id,
+                    continuation_count,
+                    max_continuations,
+                    len(full_response),
+                )
+                # 添加已生成的内容作为助手消息，并请求继续
+                current_messages = list(messages)  # 重置为原始消息
+                current_messages.append({"role": "assistant", "content": segment_response})
+                # 针对 JSON 格式响应使用更明确的续写指令
+                if response_format == "json_object":
+                    current_messages.append({
+                        "role": "user",
+                        "content": "请从你上次输出中断的地方继续，直接输出剩余的 JSON 内容，不要重复已输出的部分，不要添加任何解释。"
+                    })
+                else:
+                    current_messages.append({"role": "user", "content": "请继续"})
+                continue
+            elif finish_reason == "length":
+                # 已达到最大续写次数，记录警告但返回已收集的内容
+                logger.warning(
+                    "LLM response still truncated after max continuations: model=%s user_id=%s continuations=%d total_len=%d",
+                    config.get("model"),
+                    user_id,
+                    continuation_count,
+                    len(full_response),
+                )
+                break
+            else:
+                # 正常结束
+                break
 
         if not full_response:
             logger.error(
@@ -180,11 +226,17 @@ class LLMService:
             )
 
         await self.usage_service.increment("api_request_count")
+        if continuation_count > 0:
+            # 续写时多次请求，按实际请求次数计费
+            for _ in range(continuation_count):
+                await self.usage_service.increment("api_request_count")
+
         logger.info(
-            "LLM response success: model=%s user_id=%s chars=%d",
+            "LLM response success: model=%s user_id=%s chars=%d continuations=%d",
             config.get("model"),
             user_id,
             len(full_response),
+            continuation_count,
         )
         return full_response
 
