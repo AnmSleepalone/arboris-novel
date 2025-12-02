@@ -5,6 +5,7 @@ import os
 from dataclasses import asdict, dataclass
 from typing import AsyncGenerator, Dict, List, Optional
 
+import httpx
 from openai import AsyncOpenAI
 
 
@@ -25,7 +26,10 @@ class LLMClient:
         if not key:
             raise ValueError("缺少 OPENAI_API_KEY 配置，请在数据库或环境变量中补全。")
 
-        self._client = AsyncOpenAI(api_key=key, base_url=base_url or os.environ.get("OPENAI_API_BASE"))
+        self._client = AsyncOpenAI(
+            api_key=key,
+            base_url=base_url or os.environ.get("OPENAI_API_BASE"),
+        )
 
     async def stream_chat(
         self,
@@ -35,14 +39,13 @@ class LLMClient:
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         max_tokens: Optional[int] = None,
-        timeout: int = 120,
+        timeout: int = 300,
         **kwargs,
     ) -> AsyncGenerator[Dict[str, str], None]:
         payload = {
             "model": model or os.environ.get("MODEL", "gpt-3.5-turbo"),
             "messages": [msg.to_dict() for msg in messages],
             "stream": True,
-            "timeout": timeout,
             **kwargs,
         }
         if response_format:
@@ -54,7 +57,9 @@ class LLMClient:
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
-        stream = await self._client.chat.completions.create(**payload)
+        # 使用 httpx.Timeout 配置超时：连接超时 60 秒，读取超时使用传入参数
+        request_timeout = httpx.Timeout(timeout, connect=60.0)
+        stream = await self._client.chat.completions.create(timeout=request_timeout, **payload)
         async for chunk in stream:
             if not chunk.choices:
                 continue

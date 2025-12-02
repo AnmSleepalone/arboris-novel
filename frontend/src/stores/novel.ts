@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { NovelProject, NovelProjectSummary, ConverseResponse, BlueprintGenerationResponse, Blueprint, DeleteNovelsResponse, ChapterOutline } from '@/api/novel'
+import type { NovelProject, NovelProjectSummary, ConverseResponse, BlueprintGenerationResult, Blueprint, DeleteNovelsResponse, ChapterOutline, BlueprintFixAndContinueRequest } from '@/api/novel'
 import { NovelAPI } from '@/api/novel'
 
 export const useNovelStore = defineStore('novel', () => {
@@ -107,7 +107,7 @@ export const useNovelStore = defineStore('novel', () => {
     }
   }
 
-  async function generateBlueprint(): Promise<BlueprintGenerationResponse> {
+  async function generateBlueprint(): Promise<BlueprintGenerationResult> {
     // Generate blueprint from conversation history
     isLoading.value = true
     error.value = null
@@ -118,6 +118,22 @@ export const useNovelStore = defineStore('novel', () => {
       return await NovelAPI.generateBlueprint(currentProject.value.id)
     } catch (err) {
       error.value = err instanceof Error ? err.message : '生成蓝图失败'
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function fixAndContinueBlueprint(fixRequest: BlueprintFixAndContinueRequest): Promise<BlueprintGenerationResult> {
+    isLoading.value = true
+    error.value = null
+    try {
+      if (!currentProject.value) {
+        throw new Error('没有当前项目')
+      }
+      return await NovelAPI.fixAndContinueBlueprint(currentProject.value.id, fixRequest)
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '修复蓝图失败'
       throw err
     } finally {
       isLoading.value = false
@@ -307,6 +323,7 @@ export const useNovelStore = defineStore('novel', () => {
     loadChapter,
     sendConversation,
     generateBlueprint,
+    fixAndContinueBlueprint,
     saveBlueprint,
     generateChapter,
     evaluateChapter,

@@ -1,134 +1,148 @@
 <template>
   <div class="p-8 bg-white rounded-2xl shadow-2xl fade-in">
-    <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">信息收集完成！</h2>
+    <!-- 需要修复 JSON 时显示修复组件 -->
+    <BlueprintJsonFixer
+      v-if="needsFix && fixData"
+      ref="jsonFixerRef"
+      :fixData="fixData"
+      @cancel="handleFixCancel"
+      @submit="handleFixSubmit"
+    />
 
-    <div class="text-center mb-8">
-      <div 
-        class="prose prose-lg prose-gray max-w-none mx-auto mb-4 text-gray-600"
-        v-html="renderedAiMessage"
-      ></div>
-      <p class="text-sm text-gray-500">
-        我们已经收集了足够的信息来为您创建详细的小说蓝图。点击下方按钮开始生成您的专属故事大纲。
-      </p>
-    </div>
+    <!-- 正常流程 -->
+    <template v-else>
+      <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">信息收集完成！</h2>
 
-    <!-- 高级加载状态 -->
-    <div v-if="isGenerating" class="text-center py-12">
-      <!-- 主加载动画 -->
-      <div class="relative mx-auto mb-8 w-24 h-24">
-        <!-- 外圆环 -->
+      <div class="text-center mb-8">
         <div
-          class="absolute inset-0 border-4 rounded-full transition-colors duration-500"
-          :class="progress >= 100 ? 'border-green-100' : 'border-indigo-100'"
+          class="prose prose-lg prose-gray max-w-none mx-auto mb-4 text-gray-600"
+          v-html="renderedAiMessage"
         ></div>
-        <!-- 旋转的渐变圆环 -->
-        <div
-          class="absolute inset-0 border-4 border-transparent rounded-full transition-colors duration-500"
-          :class="[
-            progress >= 100
-              ? 'border-t-green-500 border-r-green-400'
-              : 'border-t-indigo-500 border-r-indigo-400',
-            progress < 100 ? 'animate-spin' : ''
-          ]"
-        ></div>
-        <!-- 内部脉冲圆 -->
-        <div
-          class="absolute inset-3 rounded-full animate-pulse opacity-20 transition-colors duration-500"
-          :class="progress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
-        ></div>
-        <!-- 中心图标 -->
-        <div
-          class="absolute inset-6 rounded-full flex items-center justify-center transition-colors duration-500"
-          :class="progress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
-        >
-          <svg
-            v-if="progress >= 100"
-            class="w-6 h-6 text-white"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-          </svg>
-          <svg
-            v-else
-            class="w-6 h-6 text-white animate-pulse"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-          </svg>
-        </div>
+        <p class="text-sm text-gray-500">
+          我们已经收集了足够的信息来为您创建详细的小说蓝图。点击下方按钮开始生成您的专属故事大纲。
+        </p>
       </div>
 
-      <!-- 加载文本和进度 -->
-      <div class="space-y-4">
-        <h3 class="text-xl font-semibold text-gray-800 animate-pulse">{{ loadingText }}</h3>
-        <p class="text-gray-600">AI正在为您精心打造独特的故事蓝图...</p>
-
-        <!-- 进度条 -->
-        <div class="w-full max-w-md mx-auto">
-          <!-- <div class="flex justify-between text-xs text-gray-500 mb-2">
-            <span>生成进度</span>
-            <span>{{ Math.round(progress) }}%</span>
-          </div> -->
-          <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-            <div
-              class="h-2 rounded-full transition-all duration-1000 ease-out relative"
-              :class="progress >= 100 ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-indigo-500 to-purple-600'"
-              :style="{ width: `${progress}%` }"
+      <!-- 高级加载状态 -->
+      <div v-if="isGenerating" class="text-center py-12">
+        <!-- 主加载动画 -->
+        <div class="relative mx-auto mb-8 w-24 h-24">
+          <!-- 外圆环 -->
+          <div
+            class="absolute inset-0 border-4 rounded-full transition-colors duration-500"
+            :class="progress >= 100 ? 'border-green-100' : 'border-indigo-100'"
+          ></div>
+          <!-- 旋转的渐变圆环 -->
+          <div
+            class="absolute inset-0 border-4 border-transparent rounded-full transition-colors duration-500"
+            :class="[
+              progress >= 100
+                ? 'border-t-green-500 border-r-green-400'
+                : 'border-t-indigo-500 border-r-indigo-400',
+              progress < 100 ? 'animate-spin' : ''
+            ]"
+          ></div>
+          <!-- 内部脉冲圆 -->
+          <div
+            class="absolute inset-3 rounded-full animate-pulse opacity-20 transition-colors duration-500"
+            :class="progress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
+          ></div>
+          <!-- 中心图标 -->
+          <div
+            class="absolute inset-6 rounded-full flex items-center justify-center transition-colors duration-500"
+            :class="progress >= 100 ? 'bg-green-500' : 'bg-indigo-500'"
+          >
+            <svg
+              v-if="progress >= 100"
+              class="w-6 h-6 text-white"
+              fill="currentColor"
+              viewBox="0 0 20 20"
             >
-              <!-- 闪光效果 -->
-              <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
-            </div>
+              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+            </svg>
+            <svg
+              v-else
+              class="w-6 h-6 text-white animate-pulse"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
           </div>
         </div>
 
-        <!-- 倒计时 -->
-        <!-- <div class="text-sm text-gray-500">
-          <span>预计完成时间: {{ timeRemaining }}秒</span>
-        </div> -->
+        <!-- 加载文本和进度 -->
+        <div class="space-y-4">
+          <h3 class="text-xl font-semibold text-gray-800 animate-pulse">{{ loadingText }}</h3>
+          <p class="text-gray-600">AI正在为您精心打造独特的故事蓝图...</p>
 
-        <!-- 温馨提示 -->
-        <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <p class="text-sm text-blue-800">
-            <svg class="inline w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
-            </svg>
-            AI正在分析您的创意偏好，生成过程需要一些时间，请耐心等待...
-          </p>
+          <!-- 进度条 -->
+          <div class="w-full max-w-md mx-auto">
+            <!-- <div class="flex justify-between text-xs text-gray-500 mb-2">
+              <span>生成进度</span>
+              <span>{{ Math.round(progress) }}%</span>
+            </div> -->
+            <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div
+                class="h-2 rounded-full transition-all duration-1000 ease-out relative"
+                :class="progress >= 100 ? 'bg-gradient-to-r from-green-500 to-emerald-600' : 'bg-gradient-to-r from-indigo-500 to-purple-600'"
+                :style="{ width: `${progress}%` }"
+              >
+                <!-- 闪光效果 -->
+                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-30 animate-shimmer"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 倒计时 -->
+          <!-- <div class="text-sm text-gray-500">
+            <span>预计完成时间: {{ timeRemaining }}秒</span>
+          </div> -->
+
+          <!-- 温馨提示 -->
+          <div class="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <p class="text-sm text-blue-800">
+              <svg class="inline w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+              </svg>
+              AI正在分段生成您的小说蓝图（基础信息→世界观→角色→关系→章节大纲），章节越多时间越长，请耐心等待...
+            </p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 操作按钮 -->
-    <div v-else class="text-center space-x-4">
-      <!-- <button
-        @click="$emit('back')"
-        class="bg-gray-200 text-gray-700 font-bold py-3 px-8 rounded-full hover:bg-gray-300 transition-all duration-300 transform hover:scale-105"
-      >
-        返回对话
-      </button> -->
-      <button
-        @click="generateBlueprint"
-        :disabled="isGenerating"
-        class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 px-8 rounded-full hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-      >
-        <span class="flex items-center justify-center">
-          <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
-          </svg>
-          开始创建蓝图
-        </span>
-      </button>
-    </div>
+      <!-- 操作按钮 -->
+      <div v-else class="text-center space-x-4">
+        <!-- <button
+          @click="$emit('back')"
+          class="bg-gray-200 text-gray-700 font-bold py-3 px-8 rounded-full hover:bg-gray-300 transition-all duration-300 transform hover:scale-105"
+        >
+          返回对话
+        </button> -->
+        <button
+          @click="generateBlueprint"
+          :disabled="isGenerating"
+          class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold py-3 px-8 rounded-full hover:from-indigo-600 hover:to-purple-700 transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+        >
+          <span class="flex items-center justify-center">
+            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"></path>
+            </svg>
+            开始创建蓝图
+          </span>
+        </button>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, inject } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { marked } from 'marked'
 import { useNovelStore } from '@/stores/novel'
 import { globalAlert } from '@/composables/useAlert'
+import BlueprintJsonFixer from './BlueprintJsonFixer.vue'
+import type { BlueprintGenerationNeedsFixResponse, BlueprintFixAndContinueRequest } from '@/api/novel'
 
 // 配置 marked
 marked.setOptions({
@@ -151,7 +165,12 @@ const novelStore = useNovelStore()
 const isGenerating = ref(false)
 const progress = ref(0)
 const timeElapsed = ref(0)
-const maxTime = 180 // 180秒超时
+const maxTime = 600 // 600秒（10分钟）超时，适应分段生成大型蓝图
+
+// JSON 修复相关状态
+const needsFix = ref(false)
+const fixData = ref<BlueprintGenerationNeedsFixResponse | null>(null)
+const jsonFixerRef = ref<InstanceType<typeof BlueprintJsonFixer> | null>(null)
 
 let progressTimer: NodeJS.Timeout | null = null
 let timeoutTimer: NodeJS.Timeout | null = null
@@ -169,10 +188,12 @@ const loadingText = computed(() => {
 
   const messages = [
     '正在分析故事结构...',
-    '构建角色关系网络...',
-    '生成情节发展脉络...',
-    '完善世界观设定...',
-    '优化章节安排...',
+    '构建世界观设定...',
+    '生成角色档案...',
+    '编织角色关系网络...',
+    '规划章节大纲...',
+    '完善情节发展脉络...',
+    '优化故事节奏...',
     '最后润色细节...'
   ]
 
@@ -206,7 +227,7 @@ const generateBlueprint = async () => {
     }
   }, 100)
 
-  // 60秒超时
+  // 超时处理
   timeoutTimer = setTimeout(() => {
     clearTimers()
     isGenerating.value = false
@@ -219,21 +240,23 @@ const generateBlueprint = async () => {
     const response = await novelStore.generateBlueprint()
     console.log('API调用成功，收到响应:', response)
 
-    // API成功后，快速完成进度条到100%
-    if (progressTimer) {
-      clearInterval(progressTimer)
-      progressTimer = null
+    // 清理计时器
+    clearTimers()
+    isGenerating.value = false
+
+    // 检查是否需要修复
+    if ('status' in response && response.status === 'needs_fix') {
+      console.log('需要用户修复 JSON:', response.segment_name)
+      fixData.value = response as BlueprintGenerationNeedsFixResponse
+      needsFix.value = true
+      return
     }
 
-    // 动画到100%并显示完成状态
+    // API成功后，快速完成进度条到100%
     progress.value = 100
 
     // 等待一下让用户看到100%完成状态，然后再切换界面
     await new Promise(resolve => setTimeout(resolve, 800))
-
-    // 清理并重置状态
-    clearTimers()
-    isGenerating.value = false
 
     // 通知父组件生成完成
     emit('blueprintGenerated', response)
@@ -243,6 +266,50 @@ const generateBlueprint = async () => {
     clearTimers()
     isGenerating.value = false
     globalAlert.showError(`生成蓝图失败: ${error instanceof Error ? error.message : '未知错误'}`, '生成失败')
+  }
+}
+
+// 处理修复取消
+const handleFixCancel = () => {
+  needsFix.value = false
+  fixData.value = null
+}
+
+// 处理修复提交
+const handleFixSubmit = async (fixedData: Record<string, any>) => {
+  if (!fixData.value) return
+
+  try {
+    const request: BlueprintFixAndContinueRequest = {
+      fixed_data: fixedData,
+      segment_name: fixData.value.segment_name,
+      partial_blueprint: fixData.value.partial_blueprint,
+      generation_context: fixData.value.generation_context,
+    }
+
+    console.log('提交修复后的数据:', request)
+    const response = await novelStore.fixAndContinueBlueprint(request)
+    console.log('修复后继续生成响应:', response)
+
+    // 重置修复组件状态
+    jsonFixerRef.value?.resetSubmitting()
+
+    // 检查是否还需要修复
+    if ('status' in response && response.status === 'needs_fix') {
+      console.log('仍需修复:', response.segment_name)
+      fixData.value = response as BlueprintGenerationNeedsFixResponse
+      return
+    }
+
+    // 成功！清除修复状态并通知父组件
+    needsFix.value = false
+    fixData.value = null
+    emit('blueprintGenerated', response)
+
+  } catch (error) {
+    console.error('修复后继续生成失败:', error)
+    jsonFixerRef.value?.resetSubmitting()
+    globalAlert.showError(`继续生成失败: ${error instanceof Error ? error.message : '未知错误'}`, '生成失败')
   }
 }
 

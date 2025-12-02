@@ -104,8 +104,32 @@ class NovelProjectSummary(BaseModel):
 
 
 class BlueprintGenerationResponse(BaseModel):
+    """蓝图生成成功的响应。"""
     blueprint: Blueprint
     ai_message: str
+    status: str = "success"
+
+
+class BlueprintGenerationNeedsFixResponse(BaseModel):
+    """蓝图生成需要用户修复时的响应。"""
+    status: str = "needs_fix"
+    segment_name: str = Field(..., description="失败的段名称")
+    segment_index: int = Field(..., description="失败的段索引 (1-5)")
+    raw_response: str = Field(..., description="LLM 原始响应")
+    error_message: str = Field(..., description="错误详情")
+    error_position: Optional[int] = Field(None, description="错误位置（字符索引）")
+    partial_blueprint: Dict[str, Any] = Field(..., description="已成功生成的部分蓝图")
+    ai_message: str = Field(..., description="给用户的提示信息")
+    # 用于恢复生成的上下文
+    generation_context: Dict[str, Any] = Field(..., description="生成上下文，用于恢复继续生成")
+
+
+class BlueprintFixAndContinueRequest(BaseModel):
+    """用户修复 JSON 后继续生成的请求。"""
+    fixed_data: Dict[str, Any] = Field(..., description="用户修复后的 JSON 数据")
+    segment_name: str = Field(..., description="修复的段名称")
+    partial_blueprint: Dict[str, Any] = Field(..., description="已成功生成的部分蓝图")
+    generation_context: Dict[str, Any] = Field(..., description="生成上下文")
 
 
 class ChapterGenerationResponse(BaseModel):

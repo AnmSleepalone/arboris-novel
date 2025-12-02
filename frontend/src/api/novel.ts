@@ -116,7 +116,29 @@ export interface ConverseResponse {
 export interface BlueprintGenerationResponse {
   blueprint: Blueprint
   ai_message: string
+  status?: string
 }
+
+export interface BlueprintGenerationNeedsFixResponse {
+  status: 'needs_fix'
+  segment_name: string
+  segment_index: number
+  raw_response: string
+  error_message: string
+  error_position: number | null
+  partial_blueprint: Record<string, any>
+  ai_message: string
+  generation_context: Record<string, any>
+}
+
+export interface BlueprintFixAndContinueRequest {
+  fixed_data: Record<string, any>
+  segment_name: string
+  partial_blueprint: Record<string, any>
+  generation_context: Record<string, any>
+}
+
+export type BlueprintGenerationResult = BlueprintGenerationResponse | BlueprintGenerationNeedsFixResponse
 
 export interface UIControl {
   type: 'single_choice' | 'text_input'
@@ -183,9 +205,19 @@ export class NovelAPI {
     })
   }
 
-  static async generateBlueprint(projectId: string): Promise<BlueprintGenerationResponse> {
+  static async generateBlueprint(projectId: string): Promise<BlueprintGenerationResult> {
     return request(`${NOVELS_BASE}/${projectId}/blueprint/generate`, {
       method: 'POST'
+    })
+  }
+
+  static async fixAndContinueBlueprint(
+    projectId: string,
+    fixRequest: BlueprintFixAndContinueRequest
+  ): Promise<BlueprintGenerationResult> {
+    return request(`${NOVELS_BASE}/${projectId}/blueprint/fix-and-continue`, {
+      method: 'POST',
+      body: JSON.stringify(fixRequest)
     })
   }
 
