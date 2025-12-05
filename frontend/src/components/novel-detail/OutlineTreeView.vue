@@ -473,7 +473,7 @@ async function loadTree() {
 // 树节点渲染
 // ===================================================================
 
-function renderLabel({ option }: { option: OutlineTreeNode }) {
+function renderLabel({ option }: { option: unknown }) {
   const node = option as OutlineTreeNode
 
   if (node.type === 'part') {
@@ -498,7 +498,7 @@ function renderLabel({ option }: { option: OutlineTreeNode }) {
   return h('div', { class: 'tree-node-chapter' }, node.label)
 }
 
-function renderSuffix({ option }: { option: OutlineTreeNode }) {
+function renderSuffix({ option }: { option: unknown }) {
   const node = option as OutlineTreeNode
 
   const actions: any[] = []

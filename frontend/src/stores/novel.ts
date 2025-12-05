@@ -234,17 +234,24 @@ export const useNovelStore = defineStore('novel', () => {
   }
 
   async function updateChapterOutline(chapterOutline: ChapterOutline) {
-    // 不设置全局 isLoading，让调用方处理局部加载状态
+    // 注意: 这是旧的章节大纲更新方法，用于 blueprint.chapter_outline
+    // 新的 Part/Volume/Chapter 结构应该使用 NovelAPI.updateChapterOutline 直接调用
     error.value = null
     try {
       if (!currentProject.value) {
         throw new Error('没有当前项目')
       }
-      const updatedProject = await NovelAPI.updateChapterOutline(
+
+      // 调用旧的蓝图更新API来更新章节大纲
+      const updatedProject = await NovelAPI.updateBlueprint(
         currentProject.value.id,
-        chapterOutline
+        {
+          chapter_outline: currentProject.value.blueprint?.chapter_outline?.map(ch =>
+            ch.chapter_number === chapterOutline.chapter_number ? chapterOutline : ch
+          )
+        }
       )
-      currentProject.value = updatedProject // 更新 store
+      currentProject.value = updatedProject
     } catch (err) {
       error.value = err instanceof Error ? err.message : '更新章节大纲失败'
       throw err

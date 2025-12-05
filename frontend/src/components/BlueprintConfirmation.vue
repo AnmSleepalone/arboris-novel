@@ -246,8 +246,9 @@ const generateBlueprint = async () => {
 
     // 检查是否需要修复
     if ('status' in response && response.status === 'needs_fix') {
-      console.log('需要用户修复 JSON:', response.segment_name)
-      fixData.value = response as BlueprintGenerationNeedsFixResponse
+      const needsFixResponse = response as BlueprintGenerationNeedsFixResponse
+      console.log('需要用户修复 JSON:', needsFixResponse.segment_name)
+      fixData.value = needsFixResponse
       needsFix.value = true
       return
     }
@@ -296,8 +297,9 @@ const handleFixSubmit = async (fixedData: Record<string, any>) => {
 
     // 检查是否还需要修复
     if ('status' in response && response.status === 'needs_fix') {
-      console.log('仍需修复:', response.segment_name)
-      fixData.value = response as BlueprintGenerationNeedsFixResponse
+      const needsFixResponse = response as BlueprintGenerationNeedsFixResponse
+      console.log('仍需修复:', needsFixResponse.segment_name)
+      fixData.value = needsFixResponse
       return
     }
 

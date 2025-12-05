@@ -267,16 +267,6 @@ export class NovelAPI {
     })
   }
 
-  static async updateChapterOutline(
-    projectId: string,
-    chapterOutline: ChapterOutline
-  ): Promise<NovelProject> {
-    return request(`${WRITER_BASE}/${projectId}/chapters/update-outline`, {
-      method: 'POST',
-      body: JSON.stringify(chapterOutline)
-    })
-  }
-
   static async deleteChapter(
     projectId: string,
     chapterNumbers: number[]

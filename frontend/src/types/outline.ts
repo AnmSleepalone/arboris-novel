@@ -1,3 +1,5 @@
+import type { TreeOption } from 'naive-ui'
+
 /**
  * 小说四层大纲结构类型定义
  * 层级: Project -> Part -> Volume -> Chapter
@@ -161,14 +163,12 @@ export type OutlineNodeType = 'part' | 'volume' | 'chapter'
 /**
  * 树节点数据
  */
-export interface OutlineTreeNode {
+export interface OutlineTreeNode extends TreeOption {
   key: string
   label: string
   type: OutlineNodeType
   data: Part | Volume | ChapterOutlineDetail
   children?: OutlineTreeNode[]
-  prefix?: () => any // 用于自定义图标
-  suffix?: () => any // 用于操作按钮
 }
 
 /**
