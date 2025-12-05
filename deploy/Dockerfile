@@ -5,20 +5,20 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 
-# 配置 npm 使用中国镜像源
-#RUN npm config set registry https://registry.npmmirror.com
+# 启用 pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-# 复制前端依赖文件
-COPY frontend/package*.json ./
+# 复制依赖文件
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
 
-# 安装前端依赖
-RUN npm ci --prefer-offline --no-audit
+# 安装依赖
+RUN pnpm install --frozen-lockfile --prefer-offline
 
-# 复制前端源码
+# 复制源码
 COPY frontend/ ./
 
-# 构建前端
-RUN npm run build
+# 构建
+RUN pnpm run build
 
 # ============================================
 # 第二阶段：构建最终镜像（后端 + nginx）
