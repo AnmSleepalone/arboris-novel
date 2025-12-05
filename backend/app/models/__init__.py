@@ -11,7 +11,9 @@ from .novel import (
     ChapterVersion,
     NovelBlueprint,
     NovelConversation,
+    NovelPart,
     NovelProject,
+    NovelVolume,
 )
 from .prompt import Prompt
 from .update_log import UpdateLog
@@ -27,6 +29,8 @@ __all__ = [
     "NovelBlueprint",
     "BlueprintCharacter",
     "BlueprintRelationship",
+    "NovelPart",
+    "NovelVolume",
     "ChapterOutline",
     "Chapter",
     "ChapterVersion",

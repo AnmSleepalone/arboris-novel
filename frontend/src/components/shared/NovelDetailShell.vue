@@ -237,6 +237,7 @@ import WorldSettingSection from '@/components/novel-detail/WorldSettingSection.v
 import CharactersSection from '@/components/novel-detail/CharactersSection.vue'
 import RelationshipsSection from '@/components/novel-detail/RelationshipsSection.vue'
 import ChapterOutlineSection from '@/components/novel-detail/ChapterOutlineSection.vue'
+import OutlineTreeView from '@/components/novel-detail/OutlineTreeView.vue'
 import ChaptersSection from '@/components/novel-detail/ChaptersSection.vue'
 
 interface Props {
@@ -270,7 +271,7 @@ const sectionComponents: Record<SectionKey, any> = {
   world_setting: WorldSettingSection,
   characters: CharactersSection,
   relationships: RelationshipsSection,
-  chapter_outline: ChapterOutlineSection,
+  chapter_outline: OutlineTreeView,
   chapters: ChaptersSection
 }
 
@@ -357,14 +358,14 @@ const formattedTitle = computed(() => {
 })
 
 const componentContainerClass = computed(() => {
-  const fillSections: SectionKey[] = ['chapters']
+  const fillSections: SectionKey[] = ['chapters', 'chapter_outline']
   return fillSections.includes(activeSection.value)
     ? 'flex-1 min-h-0 h-full flex flex-col overflow-hidden'
     : 'overflow-y-auto'
 })
 
 const contentCardClass = computed(() => {
-  const fillSections: SectionKey[] = ['chapters']
+  const fillSections: SectionKey[] = ['chapters', 'chapter_outline']
   return fillSections.includes(activeSection.value)
     ? 'overflow-hidden'
     : 'overflow-visible'
@@ -451,7 +452,8 @@ const componentProps = computed(() => {
     case 'relationships':
       return { data: data || null, editable }
     case 'chapter_outline':
-      return { outline: data?.chapter_outline || [], editable }
+      // OutlineTreeView 组件不需要 props,它通过 store 管理数据
+      return {}
     case 'chapters':
       return { chapters: data?.chapters || [], isAdmin: props.isAdmin }
     default:

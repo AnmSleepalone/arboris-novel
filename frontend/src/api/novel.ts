@@ -321,4 +321,178 @@ export class NovelAPI {
       })
     })
   }
+
+  // ==================================================
+  // Part (篇) 相关 API
+  // ==================================================
+
+  static async createPart(
+    projectId: string,
+    data: { title: string; description?: string }
+  ): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/parts`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async listParts(projectId: string): Promise<any[]> {
+    return request(`${NOVELS_BASE}/${projectId}/parts`)
+  }
+
+  static async updatePart(
+    projectId: string,
+    partId: number,
+    data: { title?: string; description?: string }
+  ): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/${partId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async deletePart(projectId: string, partId: number): Promise<{ status: string; message: string }> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/${partId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  static async reorderParts(projectId: string, partIds: number[]): Promise<{ status: string; message: string }> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ ids: partIds })
+    })
+  }
+
+  // ==================================================
+  // Volume (卷) 相关 API
+  // ==================================================
+
+  static async createVolume(
+    projectId: string,
+    partId: number,
+    data: { title: string; description?: string }
+  ): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/${partId}/volumes`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async listVolumes(projectId: string): Promise<any[]> {
+    return request(`${NOVELS_BASE}/${projectId}/volumes`)
+  }
+
+  static async updateVolume(
+    projectId: string,
+    volumeId: number,
+    data: { title?: string; description?: string }
+  ): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/volumes/${volumeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async deleteVolume(projectId: string, volumeId: number): Promise<{ status: string; message: string }> {
+    return request(`${NOVELS_BASE}/${projectId}/volumes/${volumeId}`, {
+      method: 'DELETE'
+    })
+  }
+
+  static async moveVolumeTopart(
+    projectId: string,
+    volumeId: number,
+    targetPartId: number
+  ): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/volumes/${volumeId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ target_part_id: targetPartId })
+    })
+  }
+
+  static async reorderVolumes(
+    projectId: string,
+    partId: number,
+    volumeIds: number[]
+  ): Promise<{ status: string; message: string }> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/${partId}/volumes/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ ids: volumeIds })
+    })
+  }
+
+  // ==================================================
+  // 树形大纲与章节移动 API
+  // ==================================================
+
+  static async getOutlineTree(projectId: string): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/outline-tree`)
+  }
+
+  static async moveChapterToVolume(
+    projectId: string,
+    chapterOutlineId: number,
+    targetVolumeId: number,
+    newChapterNumber: number
+  ): Promise<Chapter> {
+    return request(`${NOVELS_BASE}/${projectId}/chapters/${chapterOutlineId}/move`, {
+      method: 'POST',
+      body: JSON.stringify({
+        target_volume_id: targetVolumeId,
+        new_chapter_number: newChapterNumber
+      })
+    })
+  }
+
+  // ==================================================
+  // LLM 生成 Part/Volume API
+  // ==================================================
+
+  static async generateParts(projectId: string): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/generate`, {
+      method: 'POST'
+    })
+  }
+
+  static async generateVolumes(projectId: string, partId: number): Promise<any> {
+    return request(`${NOVELS_BASE}/${projectId}/parts/${partId}/volumes/generate`, {
+      method: 'POST'
+    })
+  }
+
+  // ==================================================
+  // ChapterOutline (章节大纲) CRUD API
+  // ==================================================
+
+  static async createChapterOutline(
+    projectId: string,
+    volumeId: number,
+    data: { title: string; summary?: string }
+  ): Promise<Chapter> {
+    return request(`${NOVELS_BASE}/${projectId}/volumes/${volumeId}/chapters`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async updateChapterOutline(
+    projectId: string,
+    outlineId: number,
+    data: { title?: string; summary?: string }
+  ): Promise<Chapter> {
+    return request(`${NOVELS_BASE}/${projectId}/chapters/outlines/${outlineId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  }
+
+  static async deleteChapterOutline(
+    projectId: string,
+    outlineId: number
+  ): Promise<{ status: string; message: string }> {
+    return request(`${NOVELS_BASE}/${projectId}/chapters/outlines/${outlineId}`, {
+      method: 'DELETE'
+    })
+  }
 }

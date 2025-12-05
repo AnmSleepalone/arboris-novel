@@ -52,6 +52,12 @@ class NovelProject(Base):
     relationships_: Mapped[list["BlueprintRelationship"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="BlueprintRelationship.position"
     )
+    parts: Mapped[list["NovelPart"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="NovelPart.position"
+    )
+    volumes: Mapped[list["NovelVolume"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan", order_by="NovelVolume.position"
+    )
     outlines: Mapped[list["ChapterOutline"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="ChapterOutline.chapter_number"
     )
@@ -133,6 +139,76 @@ class BlueprintRelationship(Base):
     project: Mapped[NovelProject] = relationship(back_populates="relationships_")
 
 
+class NovelPart(Base):
+    """小说篇章结构,代表大的故事阶段。"""
+
+    __tablename__ = "novel_parts"
+
+    id: Mapped[int] = mapped_column(BIGINT_PK_TYPE, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("novel_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    part_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    project: Mapped["NovelProject"] = relationship(back_populates="parts")
+    volumes: Mapped[list["NovelVolume"]] = relationship(
+        back_populates="part",
+        cascade="all, delete-orphan",
+        order_by="NovelVolume.position"
+    )
+
+
+class NovelVolume(Base):
+    """小说卷结构,Part内的子阶段。"""
+
+    __tablename__ = "novel_volumes"
+
+    id: Mapped[int] = mapped_column(BIGINT_PK_TYPE, primary_key=True, autoincrement=True)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("novel_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+    part_id: Mapped[int] = mapped_column(
+        ForeignKey("novel_parts.id", ondelete="CASCADE"),
+        nullable=False
+    )
+    volume_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+
+    project: Mapped["NovelProject"] = relationship(back_populates="volumes")
+    part: Mapped["NovelPart"] = relationship(back_populates="volumes")
+    outlines: Mapped[list["ChapterOutline"]] = relationship(
+        back_populates="volume",
+        cascade="all, delete-orphan",
+        order_by="ChapterOutline.chapter_number"
+    )
+    chapters: Mapped[list["Chapter"]] = relationship(
+        back_populates="volume",
+        cascade="all, delete-orphan",
+        order_by="Chapter.chapter_number"
+    )
+
+
 class ChapterOutline(Base):
     """章节纲要。"""
 
@@ -140,11 +216,13 @@ class ChapterOutline(Base):
 
     id: Mapped[int] = mapped_column(BIGINT_PK_TYPE, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("novel_projects.id", ondelete="CASCADE"), nullable=False)
+    volume_id: Mapped[int] = mapped_column(ForeignKey("novel_volumes.id", ondelete="CASCADE"), nullable=False)
     chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     summary: Mapped[Optional[str]] = mapped_column(Text)
 
     project: Mapped[NovelProject] = relationship(back_populates="outlines")
+    volume: Mapped["NovelVolume"] = relationship(back_populates="outlines")
 
 
 class Chapter(Base):
@@ -154,6 +232,7 @@ class Chapter(Base):
 
     id: Mapped[int] = mapped_column(BIGINT_PK_TYPE, primary_key=True, autoincrement=True)
     project_id: Mapped[str] = mapped_column(ForeignKey("novel_projects.id", ondelete="CASCADE"), nullable=False)
+    volume_id: Mapped[int] = mapped_column(ForeignKey("novel_volumes.id", ondelete="CASCADE"), nullable=False)
     chapter_number: Mapped[int] = mapped_column(Integer, nullable=False)
     real_summary: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="not_generated")
@@ -165,6 +244,7 @@ class Chapter(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     project: Mapped[NovelProject] = relationship(back_populates="chapters")
+    volume: Mapped["NovelVolume"] = relationship(back_populates="chapters")
     versions: Mapped[list["ChapterVersion"]] = relationship(
         "ChapterVersion",
         back_populates="chapter",

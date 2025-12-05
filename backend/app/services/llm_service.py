@@ -1022,3 +1022,156 @@ class LLMService:
         )
 
         return BlueprintGenerationResult(success=True, blueprint=blueprint)
+
+    async def generate_parts_outline(
+        self,
+        conversation_history: List[Dict[str, str]],
+        blueprint_info: Dict[str, Any],
+        user_id: int,
+        temperature: float = 0.8,
+    ) -> Dict[str, Any]:
+        """基于对话历史和蓝图基础信息生成篇章结构。
+
+        Args:
+            conversation_history: 完整的对话历史
+            blueprint_info: 蓝图基础信息（title, genre, style, full_synopsis等）
+            user_id: 用户ID
+            temperature: 生成温度
+
+        Returns:
+            包含 parts 数组的字典
+        """
+        prompt_service = PromptService(self.session)
+        system_prompt = await prompt_service.get_prompt("parts_outline")
+
+        if not system_prompt:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="未配置 parts_outline 提示词，请联系管理员"
+            )
+
+        # 构建用户输入
+        user_input = json.dumps(blueprint_info, ensure_ascii=False, indent=2)
+
+        # 构建完整的对话历史
+        full_history = conversation_history.copy()
+        full_history.append({"role": "user", "content": user_input})
+
+        logger.info("开始生成 Part 大纲: user_id=%s title=%s", user_id, blueprint_info.get("title"))
+
+        response = await self.get_llm_response(
+            system_prompt=system_prompt,
+            conversation_history=full_history,
+            temperature=temperature,
+            user_id=user_id,
+            timeout=180.0,
+        )
+
+        response = remove_think_tags(response)
+        normalized = unwrap_markdown_json(response)
+        sanitized = safe_parse_json(normalized)
+
+        try:
+            result = json.loads(sanitized)
+        except json.JSONDecodeError as exc:
+            logger.exception("生成 Part 大纲 JSON 解析失败: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"生成篇章结构失败，AI 返回的内容格式不正确: {str(exc)}"
+            ) from exc
+
+        if "parts" not in result or not isinstance(result["parts"], list):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="生成的篇章结构缺少 parts 字段或格式不正确"
+            )
+
+        logger.info(
+            "生成 Part 大纲完成: user_id=%s 生成 %d 个篇",
+            user_id,
+            len(result["parts"])
+        )
+
+        return result
+
+    async def generate_volumes_outline(
+        self,
+        blueprint_info: Dict[str, Any],
+        part_info: Dict[str, Any],
+        context: Optional[Dict[str, str]],
+        user_id: int,
+        temperature: float = 0.8,
+    ) -> Dict[str, Any]:
+        """为指定的篇生成卷结构。
+
+        Args:
+            blueprint_info: 小说基础信息
+            part_info: 当前篇的详细信息
+            context: 上下文信息（前一篇摘要、后一篇预览等）
+            user_id: 用户ID
+            temperature: 生成温度
+
+        Returns:
+            包含 volumes 数组的字典
+        """
+        prompt_service = PromptService(self.session)
+        system_prompt = await prompt_service.get_prompt("volumes_outline")
+
+        if not system_prompt:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="未配置 volumes_outline 提示词，请联系管理员"
+            )
+
+        # 构建用户输入
+        user_input = {
+            "novel_info": {
+                "title": blueprint_info.get("title", ""),
+                "genre": blueprint_info.get("genre", ""),
+                "style": blueprint_info.get("style", ""),
+                "tone": blueprint_info.get("tone", ""),
+            },
+            "current_part": part_info,
+            "context": context or {}
+        }
+
+        user_input_str = json.dumps(user_input, ensure_ascii=False, indent=2)
+
+        logger.info(
+            "开始生成 Volume 大纲: user_id=%s part=%s",
+            user_id,
+            part_info.get("title")
+        )
+
+        response = await self.get_llm_response(
+            system_prompt=system_prompt,
+            conversation_history=[{"role": "user", "content": user_input_str}],
+            temperature=temperature,
+            user_id=user_id,
+            timeout=180.0,
+        )
+
+        response = remove_think_tags(response)
+        normalized = unwrap_markdown_json(response)
+        result = safe_parse_json(normalized)
+
+        if not result:
+            logger.error("生成 Volume 大纲 JSON 解析失败: safe_parse_json 返回 None")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="生成卷结构失败，AI 返回的内容格式不正确"
+            )
+
+        if "volumes" not in result or not isinstance(result["volumes"], list):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="生成的卷结构缺少 volumes 字段或格式不正确"
+            )
+
+        logger.info(
+            "生成 Volume 大纲完成: user_id=%s 生成 %d 个卷",
+            user_id,
+            len(result["volumes"])
+        )
+
+        return result

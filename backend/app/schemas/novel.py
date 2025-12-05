@@ -50,7 +50,7 @@ class ChapterGenerationStatus(str, Enum):
 class ChapterOutline(BaseModel):
     chapter_number: int
     title: str
-    summary: str
+    summary: Optional[str] = None
 
 
 class Chapter(ChapterOutline):
@@ -59,6 +59,7 @@ class Chapter(ChapterOutline):
     versions: Optional[List[str]] = None
     evaluation: Optional[str] = None
     generation_status: ChapterGenerationStatus = ChapterGenerationStatus.NOT_GENERATED
+    word_count: Optional[int] = None
 
 
 class Relationship(BaseModel):
@@ -192,3 +193,111 @@ class BlueprintPatch(BaseModel):
 class EditChapterRequest(BaseModel):
     chapter_number: int
     content: str
+
+
+# ------------------------------------------------------------------
+# Part/Volume 相关Schema
+# ------------------------------------------------------------------
+class PartBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+
+class PartCreate(PartBase):
+    pass
+
+
+class PartUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class PartSchema(PartBase):
+    id: int
+    project_id: str
+    part_number: int
+    position: int
+
+    class Config:
+        from_attributes = True
+
+
+class VolumeBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+
+class VolumeCreate(VolumeBase):
+    pass
+
+
+class VolumeUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+
+
+class VolumeSchema(VolumeBase):
+    id: int
+    project_id: str
+    part_id: int
+    volume_number: int
+    position: int
+
+    class Config:
+        from_attributes = True
+
+
+class ChapterOutlineDetail(BaseModel):
+    """章节大纲详细信息(包含volume_id)"""
+    id: int
+    volume_id: int
+    chapter_number: int
+    title: str
+    summary: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class VolumeWithChapters(VolumeSchema):
+    """包含章节列表的Volume"""
+    chapters: List[ChapterOutlineDetail] = []
+
+
+class PartWithVolumes(PartSchema):
+    """包含卷列表的Part"""
+    volumes: List[VolumeWithChapters] = []
+
+
+class OutlineTreeResponse(BaseModel):
+    """树形大纲响应"""
+    parts: List[PartWithVolumes]
+
+
+class ReorderRequest(BaseModel):
+    """重排序请求"""
+    ids: List[int] = Field(..., description="按新顺序排列的ID列表")
+
+
+class MoveVolumeRequest(BaseModel):
+    """移动Volume请求"""
+    target_part_id: int
+
+
+class MoveChapterRequest(BaseModel):
+    """移动Chapter请求"""
+    target_volume_id: int
+    new_chapter_number: int
+
+
+class ChapterOutlineCreate(BaseModel):
+    """创建章节大纲请求"""
+    title: str
+    summary: Optional[str] = None
+
+
+class ChapterOutlineUpdate(BaseModel):
+    """更新章节大纲请求"""
+    title: Optional[str] = None
+    summary: Optional[str] = None
+

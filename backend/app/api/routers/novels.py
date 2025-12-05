@@ -1,12 +1,13 @@
 import json
 import logging
-from typing import Dict, List
+from typing import Dict, List, Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.dependencies import get_current_user
 from ...db.session import get_session
+from ...models import NovelPart
 from ...schemas.novel import (
     Blueprint,
     BlueprintFixAndContinueRequest,
@@ -14,12 +15,25 @@ from ...schemas.novel import (
     BlueprintGenerationResponse,
     BlueprintPatch,
     Chapter as ChapterSchema,
+    ChapterOutlineCreate,
+    ChapterOutlineDetail,
+    ChapterOutlineUpdate,
     ConverseRequest,
     ConverseResponse,
+    MoveChapterRequest,
+    MoveVolumeRequest,
     NovelProject as NovelProjectSchema,
     NovelProjectSummary,
     NovelSectionResponse,
     NovelSectionType,
+    OutlineTreeResponse,
+    PartCreate,
+    PartSchema,
+    PartUpdate,
+    ReorderRequest,
+    VolumeCreate,
+    VolumeSchema,
+    VolumeUpdate,
 )
 from ...schemas.user import UserInDB
 from ...services.llm_service import LLMService
@@ -512,3 +526,474 @@ async def patch_blueprint(
     await novel_service.patch_blueprint(project_id, update_data)
     logger.info("项目 %s 局部更新蓝图字段：%s", project_id, list(update_data.keys()))
     return await novel_service.get_project_schema(project_id, current_user.id)
+
+
+# ===================================================================
+# Part (篇) 管理端点
+# ===================================================================
+
+
+@router.post("/{project_id}/parts", response_model=PartSchema, status_code=status.HTTP_201_CREATED)
+async def create_part(
+    project_id: str,
+    payload: PartCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> PartSchema:
+    """创建新的篇(Part)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    part = await novel_service.create_part(project_id, payload.title, payload.description)
+    logger.info("项目 %s 创建篇 %s (part_id=%s)", project_id, part.title, part.id)
+    return PartSchema.model_validate(part)
+
+
+@router.get("/{project_id}/parts", response_model=List[PartSchema])
+async def list_parts(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> List[PartSchema]:
+    """获取项目的所有篇(Parts)。"""
+    novel_service = NovelService(session)
+    project = await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    logger.info("项目 %s 获取篇列表", project_id)
+    return [PartSchema.model_validate(part) for part in sorted(project.parts, key=lambda p: p.position)]
+
+
+@router.put("/{project_id}/parts/{part_id}", response_model=PartSchema)
+async def update_part(
+    project_id: str,
+    part_id: int,
+    payload: PartUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> PartSchema:
+    """更新篇(Part)信息。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    part = await novel_service.update_part(part_id, **update_data)
+    logger.info("项目 %s 更新篇 %s (part_id=%s)", project_id, part.title, part_id)
+    return PartSchema.model_validate(part)
+
+
+@router.delete("/{project_id}/parts/{part_id}", status_code=status.HTTP_200_OK)
+async def delete_part(
+    project_id: str,
+    part_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """删除篇(Part)，级联删除所有关联的卷和章节。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.delete_part(part_id)
+    logger.info("项目 %s 删除篇 part_id=%s", project_id, part_id)
+    return {"status": "success", "message": f"成功删除篇 {part_id}"}
+
+
+@router.post("/{project_id}/parts/reorder", status_code=status.HTTP_200_OK)
+async def reorder_parts(
+    project_id: str,
+    payload: ReorderRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """重新排序所有篇(Parts)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.reorder_parts(project_id, payload.ids)
+    logger.info("项目 %s 重排序篇，新顺序: %s", project_id, payload.ids)
+    return {"status": "success", "message": "篇排序已更新"}
+
+
+# ===================================================================
+# Volume (卷) 管理端点
+# ===================================================================
+
+
+@router.post("/{project_id}/parts/{part_id}/volumes", response_model=VolumeSchema, status_code=status.HTTP_201_CREATED)
+async def create_volume(
+    project_id: str,
+    part_id: int,
+    payload: VolumeCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> VolumeSchema:
+    """在指定篇(Part)下创建新的卷(Volume)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    volume = await novel_service.create_volume(part_id, payload.title, payload.description)
+    logger.info("项目 %s 在篇 %s 下创建卷 %s (volume_id=%s)", project_id, part_id, volume.title, volume.id)
+    return VolumeSchema.model_validate(volume)
+
+
+@router.get("/{project_id}/volumes", response_model=List[VolumeSchema])
+async def list_volumes(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> List[VolumeSchema]:
+    """获取项目的所有卷(Volumes)。"""
+    novel_service = NovelService(session)
+    project = await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    logger.info("项目 %s 获取卷列表", project_id)
+    return [VolumeSchema.model_validate(volume) for volume in sorted(project.volumes, key=lambda v: v.position)]
+
+
+@router.put("/{project_id}/volumes/{volume_id}", response_model=VolumeSchema)
+async def update_volume(
+    project_id: str,
+    volume_id: int,
+    payload: VolumeUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> VolumeSchema:
+    """更新卷(Volume)信息。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    volume = await novel_service.update_volume(volume_id, **update_data)
+    logger.info("项目 %s 更新卷 %s (volume_id=%s)", project_id, volume.title, volume_id)
+    return VolumeSchema.model_validate(volume)
+
+
+@router.delete("/{project_id}/volumes/{volume_id}", status_code=status.HTTP_200_OK)
+async def delete_volume(
+    project_id: str,
+    volume_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """删除卷(Volume)，级联删除所有关联的章节。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.delete_volume(volume_id)
+    logger.info("项目 %s 删除卷 volume_id=%s", project_id, volume_id)
+    return {"status": "success", "message": f"成功删除卷 {volume_id}"}
+
+
+@router.post("/{project_id}/volumes/{volume_id}/move", response_model=VolumeSchema)
+async def move_volume_to_part(
+    project_id: str,
+    volume_id: int,
+    payload: MoveVolumeRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> VolumeSchema:
+    """将卷(Volume)移动到其他篇(Part)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    volume = await novel_service.move_volume_to_part(volume_id, payload.target_part_id)
+    logger.info("项目 %s 移动卷 %s 到篇 %s", project_id, volume_id, payload.target_part_id)
+    return VolumeSchema.model_validate(volume)
+
+
+@router.post("/{project_id}/parts/{part_id}/volumes/reorder", status_code=status.HTTP_200_OK)
+async def reorder_volumes(
+    project_id: str,
+    part_id: int,
+    payload: ReorderRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """重新排序指定篇下的所有卷(Volumes)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.reorder_volumes(part_id, payload.ids)
+    logger.info("项目 %s 篇 %s 重排序卷，新顺序: %s", project_id, part_id, payload.ids)
+    return {"status": "success", "message": "卷排序已更新"}
+
+
+# ===================================================================
+# 树形大纲与章节移动端点
+# ===================================================================
+
+
+@router.get("/{project_id}/outline-tree", response_model=OutlineTreeResponse)
+async def get_outline_tree(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> OutlineTreeResponse:
+    """获取项目的完整树形大纲结构（篇->卷->章）。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    tree_data = await novel_service.get_outline_tree(project_id)
+    logger.info("项目 %s 获取树形大纲", project_id)
+    return OutlineTreeResponse(**tree_data)
+
+
+@router.post("/{project_id}/chapters/{chapter_outline_id}/move", response_model=ChapterSchema)
+async def move_chapter_to_volume(
+    project_id: str,
+    chapter_outline_id: int,
+    payload: MoveChapterRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> ChapterSchema:
+    """将章节移动到其他卷(Volume)。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    outline = await novel_service.move_chapter_to_volume(
+        chapter_outline_id,
+        payload.target_volume_id,
+        payload.new_chapter_number
+    )
+    logger.info(
+        "项目 %s 移动章节 %s 到卷 %s，新章节号 %s",
+        project_id,
+        chapter_outline_id,
+        payload.target_volume_id,
+        payload.new_chapter_number
+    )
+
+    # 返回完整的章节Schema
+    return await novel_service.get_chapter_schema(project_id, current_user.id, payload.new_chapter_number)
+
+
+# ===================================================================
+# ChapterOutline (章节大纲) CRUD 端点
+# ===================================================================
+
+
+@router.post("/{project_id}/volumes/{volume_id}/chapters", response_model=ChapterOutlineDetail, status_code=status.HTTP_201_CREATED)
+async def create_chapter_outline(
+    project_id: str,
+    volume_id: int,
+    payload: ChapterOutlineCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> ChapterOutlineDetail:
+    """在指定卷下创建新的章节大纲。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    outline = await novel_service.create_chapter_outline(
+        project_id,
+        volume_id,
+        payload.title,
+        payload.summary
+    )
+    logger.info("项目 %s 在卷 %s 下创建章节 %s (outline_id=%s)", project_id, volume_id, outline.title, outline.id)
+    return ChapterOutlineDetail.model_validate(outline)
+
+
+@router.put("/{project_id}/chapters/outlines/{outline_id}", response_model=ChapterOutlineDetail)
+async def update_chapter_outline(
+    project_id: str,
+    outline_id: int,
+    payload: ChapterOutlineUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> ChapterOutlineDetail:
+    """更新章节大纲信息。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    outline = await novel_service.update_chapter_outline(outline_id, **update_data)
+    logger.info("项目 %s 更新章节大纲 %s (outline_id=%s)", project_id, outline.title, outline_id)
+    return ChapterOutlineDetail.model_validate(outline)
+
+
+@router.delete("/{project_id}/chapters/outlines/{outline_id}", status_code=status.HTTP_200_OK)
+async def delete_chapter_outline(
+    project_id: str,
+    outline_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """删除章节大纲。"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.delete_chapter_outline(outline_id)
+    logger.info("项目 %s 删除章节大纲 outline_id=%s", project_id, outline_id)
+    return {"status": "success", "message": f"成功删除章节大纲 {outline_id}"}
+
+
+# ===================================================================
+# LLM 生成 Part/Volume 端点
+# ===================================================================
+
+
+@router.post("/{project_id}/parts/generate")
+async def generate_parts(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """基于对话历史和蓝图信息生成篇章结构。"""
+    novel_service = NovelService(session)
+    llm_service = LLMService(session)
+
+    project = await novel_service.ensure_project_owner(project_id, current_user.id)
+    logger.info("项目 %s 开始生成 Part 大纲", project_id)
+
+    # 获取对话历史
+    history_records = await novel_service.list_conversations(project_id)
+    if not history_records:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="缺少对话历史，请先完成概念对话"
+        )
+
+    # 格式化对话历史
+    formatted_history: List[Dict[str, str]] = []
+    for record in history_records:
+        role = record.role
+        content = record.content
+        if not role or not content:
+            continue
+        try:
+            normalized = unwrap_markdown_json(content)
+            data = json.loads(normalized)
+            if role == "user":
+                user_value = data.get("value", data)
+                if isinstance(user_value, str):
+                    formatted_history.append({"role": "user", "content": user_value})
+            elif role == "assistant":
+                ai_message = data.get("ai_message") if isinstance(data, dict) else None
+                if ai_message:
+                    formatted_history.append({"role": "assistant", "content": ai_message})
+        except (json.JSONDecodeError, AttributeError):
+            continue
+
+    if not formatted_history:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无法从历史对话中提取有效内容"
+        )
+
+    # 获取蓝图基础信息
+    blueprint = project.blueprint
+    if not blueprint:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="项目尚未生成蓝图，请先生成蓝图"
+        )
+
+    blueprint_info = {
+        "title": blueprint.title or project.title,
+        "genre": blueprint.genre or "",
+        "style": blueprint.style or "",
+        "tone": blueprint.tone or "",
+        "full_synopsis": blueprint.full_synopsis or "",
+        "estimated_length": "长篇",  # 可以根据 chapter_outline 数量动态计算
+    }
+
+    # 生成 Part 大纲
+    result = await llm_service.generate_parts_outline(
+        conversation_history=formatted_history,
+        blueprint_info=blueprint_info,
+        user_id=current_user.id,
+    )
+
+    logger.info("项目 %s 生成 Part 大纲完成，共 %d 个篇", project_id, len(result.get("parts", [])))
+
+    return {
+        "status": "success",
+        "data": result,
+        "ai_message": f"已为您生成 {len(result.get('parts', []))} 个篇的结构框架，请查看并确认。"
+    }
+
+
+@router.post("/{project_id}/parts/{part_id}/volumes/generate")
+async def generate_volumes(
+    project_id: str,
+    part_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """为指定的篇生成卷结构。"""
+    novel_service = NovelService(session)
+    llm_service = LLMService(session)
+
+    project = await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    # 获取指定的 Part
+    part = await session.get(NovelPart, part_id)
+    if not part or part.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="篇不存在或不属于该项目"
+        )
+
+    logger.info("项目 %s 篇 %s 开始生成 Volume 大纲", project_id, part.title)
+
+    # 获取蓝图基础信息
+    blueprint = project.blueprint
+    if not blueprint:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="项目尚未生成蓝图，请先生成蓝图"
+        )
+
+    blueprint_info = {
+        "title": blueprint.title or project.title,
+        "genre": blueprint.genre or "",
+        "style": blueprint.style or "",
+        "tone": blueprint.tone or "",
+    }
+
+    # 构建 Part 信息
+    part_info = {
+        "part_number": part.part_number,
+        "title": part.title,
+        "description": part.description or "",
+        "estimated_chapters": 30,  # 可以根据实际情况计算
+    }
+
+    # 构建上下文（可选：获取前后篇的信息）
+    # 手动查询所有 parts,避免懒加载
+    from sqlalchemy import select
+    stmt = select(NovelPart).where(NovelPart.project_id == project_id).order_by(NovelPart.position)
+    result_parts = await session.execute(stmt)
+    all_parts = list(result_parts.scalars().all())
+
+    context = {}
+    part_index = next((i for i, p in enumerate(all_parts) if p.id == part_id), None)
+
+    if part_index is not None:
+        if part_index > 0:
+            prev_part = all_parts[part_index - 1]
+            context["previous_part_summary"] = f"第{prev_part.part_number}篇: {prev_part.title} - {prev_part.description}"
+        if part_index < len(all_parts) - 1:
+            next_part = all_parts[part_index + 1]
+            context["next_part_preview"] = f"第{next_part.part_number}篇: {next_part.title} - {next_part.description}"
+
+    # 生成 Volume 大纲
+    result = await llm_service.generate_volumes_outline(
+        blueprint_info=blueprint_info,
+        part_info=part_info,
+        context=context,
+        user_id=current_user.id,
+    )
+
+    logger.info(
+        "项目 %s 篇 %s 生成 Volume 大纲完成，共 %d 个卷",
+        project_id,
+        part.title,
+        len(result.get("volumes", []))
+    )
+
+    return {
+        "status": "success",
+        "data": result,
+        "ai_message": f"已为篇《{part.title}》生成 {len(result.get('volumes', []))} 个卷的结构，请查看并确认。"
+    }

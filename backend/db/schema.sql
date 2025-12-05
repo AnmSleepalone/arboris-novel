@@ -75,19 +75,56 @@ CREATE TABLE IF NOT EXISTS blueprint_relationships (
     CONSTRAINT fk_relationships_project FOREIGN KEY (project_id) REFERENCES novel_projects(id) ON DELETE CASCADE
 );
 
+-- 篇(Part)表 - 小说的大阶段划分
+CREATE TABLE IF NOT EXISTS novel_parts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    project_id CHAR(36) NOT NULL,
+    part_number INT NOT NULL COMMENT '篇编号',
+    title VARCHAR(255) NOT NULL COMMENT '篇标题',
+    description TEXT NULL COMMENT '篇描述,故事走向',
+    position INT DEFAULT 0 COMMENT '排序权重',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_parts_project FOREIGN KEY (project_id) REFERENCES novel_projects(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_part_project_number (project_id, part_number),
+    INDEX idx_parts_project_position (project_id, position)
+);
+
+-- 卷(Volume)表 - Part内的子阶段划分
+CREATE TABLE IF NOT EXISTS novel_volumes (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    project_id CHAR(36) NOT NULL COMMENT '冗余字段,便于查询',
+    part_id BIGINT NOT NULL,
+    volume_number INT NOT NULL COMMENT 'Part内从1开始的卷编号',
+    title VARCHAR(255) NOT NULL COMMENT '卷标题',
+    description TEXT NULL COMMENT '卷描述,阶段性冲突',
+    position INT DEFAULT 0 COMMENT '排序权重',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_volumes_project FOREIGN KEY (project_id) REFERENCES novel_projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_volumes_part FOREIGN KEY (part_id) REFERENCES novel_parts(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_volume_part_number (part_id, volume_number),
+    INDEX idx_volumes_part_position (part_id, position),
+    INDEX idx_volumes_project (project_id)
+);
+
 CREATE TABLE IF NOT EXISTS chapter_outlines (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     project_id CHAR(36) NOT NULL,
+    volume_id BIGINT NOT NULL COMMENT '所属卷ID',
     chapter_number INT NOT NULL,
     title VARCHAR(255) NOT NULL,
     summary TEXT NULL,
     CONSTRAINT fk_outlines_project FOREIGN KEY (project_id) REFERENCES novel_projects(id) ON DELETE CASCADE,
-    UNIQUE KEY uq_outline_project_chapter (project_id, chapter_number)
+    CONSTRAINT fk_outlines_volume FOREIGN KEY (volume_id) REFERENCES novel_volumes(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_outline_volume_chapter (volume_id, chapter_number),
+    INDEX idx_outlines_project (project_id)
 );
 
 CREATE TABLE IF NOT EXISTS chapters (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     project_id CHAR(36) NOT NULL,
+    volume_id BIGINT NOT NULL COMMENT '所属卷ID',
     chapter_number INT NOT NULL,
     real_summary TEXT NULL,
     status VARCHAR(32) DEFAULT 'not_generated',
@@ -96,7 +133,9 @@ CREATE TABLE IF NOT EXISTS chapters (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_chapters_project FOREIGN KEY (project_id) REFERENCES novel_projects(id) ON DELETE CASCADE,
-    UNIQUE KEY uq_chapter_project_number (project_id, chapter_number)
+    CONSTRAINT fk_chapters_volume FOREIGN KEY (volume_id) REFERENCES novel_volumes(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_chapter_volume_number (volume_id, chapter_number),
+    INDEX idx_chapters_project (project_id)
 );
 
 CREATE TABLE IF NOT EXISTS chapter_versions (
