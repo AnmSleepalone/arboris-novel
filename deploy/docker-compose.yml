@@ -63,6 +63,7 @@ services:
     restart: unless-stopped
     volumes:
       - ${SQLITE_STORAGE_SOURCE:-sqlite-data}:/app/storage
+      - ${UPLOADS_SOURCE:-uploads-data}:/app/uploads
     networks:
       - app-network
     healthcheck:
@@ -104,6 +105,8 @@ volumes:
   mysql-data:
     driver: local
   sqlite-data:
+    driver: local
+  uploads-data:
     driver: local
 
 networks:
