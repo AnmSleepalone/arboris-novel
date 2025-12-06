@@ -52,7 +52,7 @@
           </div>
         </div>
 
-        <!-- 章节列表 -->
+        <!-- 章节树形列表 -->
         <div ref="listContainer" class="flex-1 overflow-y-auto">
           <div class="p-6 pb-4">
             <div class="flex items-center justify-between mb-4">
@@ -65,22 +65,72 @@
                 >
                   定位到未完成
                 </button>
-                <span class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full text-xs font-medium">
-                  {{ totalChapters }} 章
-                </span>
+                <div class="text-xs text-gray-600">
+                  <span v-if="outlineTree">{{ outlineTree.parts.length }} 篇 ·</span>
+                  <span v-if="outlineTree"> {{ totalVolumes }} 卷 ·</span>
+                  <span class="text-indigo-700 font-semibold"> {{ totalChapters }} 章</span>
+                </div>
               </div>
             </div>
           </div>
 
           <div class="px-6 pb-6">
-            <div v-if="project.blueprint?.chapter_outline?.length" class="space-y-2">
-              <div
-                v-for="chapter in project.blueprint.chapter_outline"
-                :key="chapter.chapter_number"
-                :ref="el => setChapterRef(chapter.chapter_number, el)"
-                @click="$emit('selectChapter', chapter.chapter_number)"
-                :class="[
-                  'group cursor-pointer rounded-lg border-2 p-4 transition-all duration-200',
+            <!-- 树形结构 -->
+            <div v-if="outlineTree && outlineTree.parts.length > 0" class="space-y-3">
+              <!-- 篇 -->
+              <div v-for="part in outlineTree.parts" :key="part.id" class="border border-gray-200 rounded-lg overflow-hidden">
+                <!-- 篇标题 -->
+                <div
+                  class="bg-gradient-to-r from-slate-100 to-slate-50 px-3 py-2 cursor-pointer hover:from-slate-150 hover:to-slate-100 transition-colors"
+                  @click="togglePart(part.id)"
+                >
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-4 h-4 text-slate-600 transition-transform"
+                      :class="expandedParts.has(part.id) ? 'rotate-90' : ''"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span class="font-semibold text-sm text-slate-800">{{ part.title }}</span>
+                    <span class="ml-auto text-xs text-slate-500">{{ part.volumes.length }} 卷</span>
+                  </div>
+                </div>
+
+                <!-- 卷列表 -->
+                <div v-show="expandedParts.has(part.id)" class="bg-white">
+                  <div v-for="volume in part.volumes" :key="volume.id" class="border-t border-gray-100">
+                    <!-- 卷标题 -->
+                    <div
+                      class="bg-gray-50/50 px-4 py-1.5 cursor-pointer hover:bg-gray-100/70 transition-colors"
+                      @click="toggleVolume(volume.id)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <svg
+                          class="w-3.5 h-3.5 text-gray-500 transition-transform"
+                          :class="expandedVolumes.has(volume.id) ? 'rotate-90' : ''"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span class="font-medium text-xs text-gray-700">{{ volume.title }}</span>
+                        <span class="ml-auto text-xs text-gray-500">{{ volume.chapters.length }} 章</span>
+                      </div>
+                    </div>
+
+                    <!-- 章节列表 -->
+                    <div v-show="expandedVolumes.has(volume.id)" class="space-y-2 p-2">
+                      <div
+                        v-for="chapter in volume.chapters"
+                        :key="chapter.chapter_number"
+                        :ref="el => setChapterRef(chapter.chapter_number, el)"
+                        @click="$emit('selectChapter', chapter.chapter_number)"
+                        :class="[
+                          'group cursor-pointer rounded-lg border-2 p-3 transition-all duration-200',
                   selectedForDeletion.includes(chapter.chapter_number)
                     ? 'border-red-300 bg-red-50'
                     : selectedChapterNumber === chapter.chapter_number
@@ -192,11 +242,23 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+            <!-- 空状态/加载中 -->
+            <div v-else-if="isLoadingTree" class="text-center py-8">
+              <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-2"></div>
+              <p class="text-xs text-gray-500">加载大纲中...</p>
+            </div>
+
             <div v-else class="text-center py-8 text-gray-500">
               <svg class="w-12 h-12 mx-auto mb-3 opacity-50" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4zM18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9z"></path>
               </svg>
-              <p>暂无章节大纲</p>
+              <p class="text-sm">暂无大纲结构</p>
+              <p class="text-xs mt-1 text-gray-400">请先在"章节大纲"中创建</p>
             </div>
             <div v-if="selectedForDeletion.length > 0" class="mt-4">
               <button
@@ -232,10 +294,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { globalAlert } from '@/composables/useAlert'
 import type { NovelProject } from '@/api/novel'
+import { NovelAPI } from '@/api/novel'
+import type { OutlineTreeResponse } from '@/types/outline'
 import Tooltip from '@/components/Tooltip.vue'
 
 interface Props {
@@ -255,6 +319,12 @@ const selectedForDeletion = ref<number[]>([])
 const listContainer = ref<HTMLElement | null>(null)
 const chapterRefs = ref<Record<number, HTMLElement | null>>({})
 
+// 树形大纲数据
+const outlineTree = ref<OutlineTreeResponse | null>(null)
+const isLoadingTree = ref(false)
+const expandedParts = ref(new Set<number>())
+const expandedVolumes = ref(new Set<number>())
+
 const characterCount = computed(() => {
   return props.project?.blueprint?.characters?.length || 0
 })
@@ -272,6 +342,12 @@ const lastChapterNumber = computed(() => {
 
 const totalChapters = computed(() => {
   return props.project?.blueprint?.chapter_outline?.length || 0
+})
+
+// 计算总卷数
+const totalVolumes = computed(() => {
+  if (!outlineTree.value) return 0
+  return outlineTree.value.parts.reduce((sum, part) => sum + part.volumes.length, 0)
 })
 
 const hasIncompleteChapters = computed(() => {
@@ -405,4 +481,58 @@ const canGenerateChapter = (chapterNumber: number) => {
 
   return true
 }
+
+// 加载大纲树
+const loadOutlineTree = async () => {
+  if (!props.project?.id) return
+
+  isLoadingTree.value = true
+  try {
+    outlineTree.value = await NovelAPI.getOutlineTree(props.project.id)
+
+    // 默认展开所有篇和卷
+    if (outlineTree.value) {
+      outlineTree.value.parts.forEach(part => {
+        expandedParts.value.add(part.id)
+        part.volumes.forEach(volume => {
+          expandedVolumes.value.add(volume.id)
+        })
+      })
+    }
+  } catch (err) {
+    console.error('加载大纲树失败:', err)
+  } finally {
+    isLoadingTree.value = false
+  }
+}
+
+// 切换篇展开/折叠
+const togglePart = (partId: number) => {
+  if (expandedParts.value.has(partId)) {
+    expandedParts.value.delete(partId)
+  } else {
+    expandedParts.value.add(partId)
+  }
+}
+
+// 切换卷展开/折叠
+const toggleVolume = (volumeId: number) => {
+  if (expandedVolumes.value.has(volumeId)) {
+    expandedVolumes.value.delete(volumeId)
+  } else {
+    expandedVolumes.value.add(volumeId)
+  }
+}
+
+// 组件挂载时加载大纲树
+onMounted(() => {
+  loadOutlineTree()
+})
+
+// 监听项目变化,重新加载大纲树
+watch(() => props.project?.id, (newId, oldId) => {
+  if (newId && newId !== oldId) {
+    loadOutlineTree()
+  }
+})
 </script>

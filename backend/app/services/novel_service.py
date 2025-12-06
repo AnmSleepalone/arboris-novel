@@ -545,12 +545,16 @@ class NovelService:
                 world_setting=blueprint_obj.world_setting or {},
                 characters=[
                     {
+                        "id": character.id,
                         "name": character.name,
                         "identity": character.identity,
                         "personality": character.personality,
                         "goals": character.goals,
                         "abilities": character.abilities,
                         "relationship_to_protagonist": character.relationship_to_protagonist,
+                        "image_path": character.image_path,
+                        "group_type": character.group_type,
+                        "appearance_period": character.appearance_period,
                         **(character.extra or {}),
                     }
                     for character in sorted(project.characters, key=lambda c: c.position)
@@ -1090,4 +1094,163 @@ class NovelService:
 
         await self.session.delete(outline)
         await self.session.commit()
+
+    # ------------------------------------------------------------------
+    # Character 相关方法
+    # ------------------------------------------------------------------
+
+    async def get_character(self, character_id: int, user_id: int) -> BlueprintCharacter:
+        """获取角色详情"""
+        from ..models import BlueprintCharacter
+        stmt = select(BlueprintCharacter).where(BlueprintCharacter.id == character_id)
+        result = await self.session.execute(stmt)
+        character = result.scalar_one_or_none()
+
+        if not character:
+            raise ValueError(f"角色 {character_id} 不存在")
+
+        # 验证权限
+        await self.ensure_project_owner(character.project_id, user_id)
+        return character
+
+    async def update_character(
+        self,
+        character_id: int,
+        user_id: int,
+        **update_data
+    ) -> BlueprintCharacter:
+        """更新角色信息"""
+        from ..models import BlueprintCharacter
+
+        character = await self.get_character(character_id, user_id)
+
+        # 更新字段
+        for key, value in update_data.items():
+            if hasattr(character, key):
+                setattr(character, key, value)
+
+        await self.session.commit()
+        await self.session.refresh(character)
+        return character
+
+    async def upload_character_image(
+        self,
+        character_id: int,
+        user_id: int,
+        file_content: bytes,
+        filename: str,
+        content_type: str
+    ) -> str:
+        """上传角色图片,返回存储路径"""
+        import os
+        from pathlib import Path
+
+        character = await self.get_character(character_id, user_id)
+
+        # 验证文件类型
+        allowed_types = {'image/jpeg', 'image/png', 'image/webp', 'image/jpg'}
+        if content_type not in allowed_types:
+            raise ValueError(f"不支持的图片格式: {content_type}")
+
+        # 验证文件大小 (2MB)
+        max_size = 2 * 1024 * 1024
+        if len(file_content) > max_size:
+            raise ValueError(f"图片大小超过限制 (最大2MB)")
+
+        # 生成文件路径
+        ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'jpg'
+        if ext not in {'jpg', 'jpeg', 'png', 'webp'}:
+            ext = 'jpg'
+
+        file_name = f"{character.project_id}_{character_id}.{ext}"
+
+        # 创建目录
+        upload_dir = Path("uploads/characters")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = upload_dir / file_name
+
+        # 删除旧图片
+        if character.image_path:
+            old_path = Path(character.image_path)
+            if old_path.exists():
+                old_path.unlink()
+
+        # 保存新图片
+        with open(file_path, 'wb') as f:
+            f.write(file_content)
+
+        # 更新数据库
+        relative_path = f"/uploads/characters/{file_name}"
+        character.image_path = relative_path
+        await self.session.commit()
+
+        return relative_path
+
+    async def delete_character_image(
+        self,
+        character_id: int,
+        user_id: int
+    ) -> None:
+        """删除角色图片"""
+        from pathlib import Path
+
+        character = await self.get_character(character_id, user_id)
+
+        if character.image_path:
+            file_path = Path(character.image_path.lstrip('/'))
+            if file_path.exists():
+                file_path.unlink()
+
+            character.image_path = None
+            await self.session.commit()
+
+    async def get_character_groups(
+        self,
+        project_id: str,
+        user_id: int
+    ) -> List[str]:
+        """获取项目中所有使用的分组类型"""
+        from ..models import BlueprintCharacter
+
+        await self.ensure_project_owner(project_id, user_id)
+
+        stmt = (
+            select(BlueprintCharacter.group_type)
+            .where(
+                BlueprintCharacter.project_id == project_id,
+                BlueprintCharacter.group_type.isnot(None),
+                BlueprintCharacter.group_type != ""
+            )
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        groups = [row[0] for row in result.all()]
+        return sorted(groups)
+
+    async def batch_update_character_group(
+        self,
+        project_id: str,
+        user_id: int,
+        old_group: str,
+        new_group: str
+    ) -> int:
+        """批量更新角色分组(用于重命名分组)"""
+        from sqlalchemy import update
+        from ..models import BlueprintCharacter
+
+        await self.ensure_project_owner(project_id, user_id)
+
+        stmt = (
+            update(BlueprintCharacter)
+            .where(
+                BlueprintCharacter.project_id == project_id,
+                BlueprintCharacter.group_type == old_group
+            )
+            .values(group_type=new_group)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.commit()
+
+        return result.rowcount
 

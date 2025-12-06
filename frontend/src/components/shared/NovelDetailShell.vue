@@ -147,6 +147,7 @@
                 :class="componentContainerClass"
                 @edit="handleSectionEdit"
                 @add="startAddChapter"
+                @refresh="handleRefresh"
               />
             </div>
           </div>
@@ -448,7 +449,7 @@ const componentProps = computed(() => {
     case 'world_setting':
       return { data: data || null, editable }
     case 'characters':
-      return { data: data || null, editable }
+      return { data: data || null, editable, projectId }
     case 'relationships':
       return { data: data || null, editable }
     case 'chapter_outline':
@@ -467,6 +468,11 @@ const handleSectionEdit = (payload: { field: string; title: string; value: any }
   modalTitle.value = payload.title
   modalContent.value = payload.value
   isModalOpen.value = true
+}
+
+const handleRefresh = () => {
+  // 刷新当前section的数据
+  reloadSection(activeSection.value, true)
 }
 
 const resolveSectionKey = (field: string): SectionKey => {

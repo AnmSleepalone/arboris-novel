@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Dict, List, Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.dependencies import get_current_user
@@ -15,6 +15,9 @@ from ...schemas.novel import (
     BlueprintGenerationResponse,
     BlueprintPatch,
     Chapter as ChapterSchema,
+    CharacterDetail,
+    CharacterGroupsResponse,
+    CharacterUpdate,
     ChapterOutlineCreate,
     ChapterOutlineDetail,
     ChapterOutlineUpdate,
@@ -997,3 +1000,111 @@ async def generate_volumes(
         "data": result,
         "ai_message": f"已为篇《{part.title}》生成 {len(result.get('volumes', []))} 个卷的结构，请查看并确认。"
     }
+
+
+# ===================================================================
+# Character (角色) 管理端点
+# ===================================================================
+
+
+@router.put("/{project_id}/characters/{character_id}", response_model=CharacterDetail)
+async def update_character(
+    project_id: str,
+    character_id: int,
+    payload: CharacterUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> CharacterDetail:
+    """更新角色信息"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+    character = await novel_service.update_character(
+        character_id,
+        current_user.id,
+        **update_data
+    )
+    logger.info("项目 %s 更新角色 %s (character_id=%s)", project_id, character.name, character_id)
+    return CharacterDetail.model_validate(character)
+
+
+@router.post("/{project_id}/characters/{character_id}/image", status_code=status.HTTP_200_OK)
+async def upload_character_image(
+    project_id: str,
+    character_id: int,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """上传角色图片"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    # 读取文件内容
+    file_content = await file.read()
+
+    try:
+        image_path = await novel_service.upload_character_image(
+            character_id,
+            current_user.id,
+            file_content,
+            file.filename or "image.jpg",
+            file.content_type or "image/jpeg"
+        )
+        logger.info("项目 %s 角色 %s 上传图片成功", project_id, character_id)
+        return {"status": "success", "image_path": image_path}
+    except ValueError as e:
+        logger.warning("项目 %s 角色 %s 上传图片失败: %s", project_id, character_id, str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{project_id}/characters/{character_id}/image", status_code=status.HTTP_200_OK)
+async def delete_character_image(
+    project_id: str,
+    character_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, str]:
+    """删除角色图片"""
+    novel_service = NovelService(session)
+    await novel_service.ensure_project_owner(project_id, current_user.id)
+
+    await novel_service.delete_character_image(character_id, current_user.id)
+    logger.info("项目 %s 角色 %s 删除图片", project_id, character_id)
+    return {"status": "success", "message": "图片已删除"}
+
+
+@router.get("/{project_id}/characters/groups", response_model=CharacterGroupsResponse)
+async def get_character_groups(
+    project_id: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> CharacterGroupsResponse:
+    """获取项目中所有使用的角色分组"""
+    novel_service = NovelService(session)
+    groups = await novel_service.get_character_groups(project_id, current_user.id)
+    logger.info("项目 %s 获取角色分组列表，共 %d 个", project_id, len(groups))
+    return CharacterGroupsResponse(groups=groups)
+
+
+@router.post("/{project_id}/characters/groups/rename", status_code=status.HTTP_200_OK)
+async def rename_character_group(
+    project_id: str,
+    old_group: str = Body(...),
+    new_group: str = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """重命名角色分组"""
+    novel_service = NovelService(session)
+
+    count = await novel_service.batch_update_character_group(
+        project_id,
+        current_user.id,
+        old_group,
+        new_group
+    )
+    logger.info("项目 %s 重命名分组 '%s' -> '%s'，影响 %d 个角色", project_id, old_group, new_group, count)
+    return {"status": "success", "message": f"已更新 {count} 个角色的分组", "affected_count": count}
+

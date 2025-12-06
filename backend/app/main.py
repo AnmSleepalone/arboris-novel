@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from .core.config import settings
 from .db.init_db import init_db
@@ -91,6 +92,12 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+
+# 挂载静态文件目录用于角色图片访问
+from pathlib import Path
+uploads_path = Path("uploads")
+uploads_path.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_path)), name="uploads")
 
 
 # 健康检查接口（用于 Docker 健康检查和监控）

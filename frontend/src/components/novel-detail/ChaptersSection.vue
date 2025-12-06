@@ -8,40 +8,114 @@
         @click="showChapterList = false"
       ></div>
 
-      <!-- 章节列表侧边栏 -->
+      <!-- 章节树形列表侧边栏 -->
       <aside
-        class="fixed lg:static inset-y-0 left-0 z-50 w-72 lg:w-72 bg-white lg:bg-slate-50/70 border-r border-slate-200 flex flex-col h-full min-h-0 max-h-full overflow-hidden transition-transform duration-300 lg:translate-x-0 shadow-2xl lg:shadow-none"
+        class="fixed lg:static inset-y-0 left-0 z-50 w-80 lg:w-80 bg-white lg:bg-slate-50/70 border-r border-slate-200 flex flex-col h-full min-h-0 max-h-full overflow-hidden transition-transform duration-300 lg:translate-x-0 shadow-2xl lg:shadow-none"
         :class="showChapterList ? 'translate-x-0' : '-translate-x-full'"
       >
         <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 class="text-base font-semibold text-slate-900">章节</h3>
-          <span class="text-xs text-slate-500">{{ chapters.length }} 篇</span>
+          <h3 class="text-base font-semibold text-slate-900">章节大纲</h3>
+          <div class="flex items-center gap-2 text-xs text-slate-500">
+            <span v-if="outlineTree">{{ outlineTree.parts.length }} 篇</span>
+            <span v-if="outlineTree">·</span>
+            <span v-if="outlineTree">{{ totalVolumes }} 卷</span>
+            <span v-if="outlineTree">·</span>
+            <span>{{ chapters.length }} 章</span>
+          </div>
         </div>
-        <ul class="flex-1 h-full overflow-y-auto divide-y divide-slate-200 overscroll-contain">
-          <li v-for="(chapter, index) in chapters" :key="chapter.chapter_number">
-            <button
-              class="w-full text-left px-5 py-3 transition-colors duration-200"
-              :class="selectedChapter?.chapter_number === chapter.chapter_number ? 'bg-indigo-50 text-indigo-600 font-semibold' : 'hover:bg-slate-50 lg:hover:bg-white text-slate-700'"
-              @click="selectChapter(chapter.chapter_number)"
+
+        <!-- 树形结构 -->
+        <div v-if="outlineTree && outlineTree.parts.length > 0" class="flex-1 h-full overflow-y-auto overscroll-contain">
+          <div v-for="part in outlineTree.parts" :key="part.id" class="border-b border-slate-100">
+            <!-- 篇 -->
+            <div
+              class="px-4 py-2.5 bg-slate-100/80 text-slate-800 font-semibold text-sm cursor-pointer hover:bg-slate-150 transition-colors"
+              @click="togglePart(part.id)"
             >
-              <div class="flex items-center justify-between gap-3">
-                <div class="flex items-center gap-3 min-w-0">
-                  <span class="inline-flex items-center justify-center w-6 h-6 text-xs font-semibold text-slate-500 bg-slate-100 rounded-full">
-                    {{ index + 1 }}
-                  </span>
-                  <span class="truncate">{{ chapter.title || `第${chapter.chapter_number}章` }}</span>
-                </div>
-                <span v-if="chapterCache.has(chapter.chapter_number)" class="text-xs text-slate-400">
-                  {{ calculateWordCount(chapterCache.get(chapter.chapter_number)?.content) }} 字
-                </span>
-                <span v-else class="text-xs text-slate-400">-</span>
+              <div class="flex items-center gap-2">
+                <svg
+                  class="w-4 h-4 transition-transform"
+                  :class="expandedParts.has(part.id) ? 'rotate-90' : ''"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+                <span>{{ part.title }}</span>
+                <span class="ml-auto text-xs text-slate-500">{{ part.volumes.length }} 卷</span>
               </div>
-              <p v-if="chapter.summary" class="mt-1 text-xs text-slate-500 truncate">
-                {{ chapter.summary }}
-              </p>
-            </button>
-          </li>
-        </ul>
+            </div>
+
+            <!-- 卷列表 -->
+            <div v-show="expandedParts.has(part.id)">
+              <div v-for="volume in part.volumes" :key="volume.id" class="border-b border-slate-50">
+                <!-- 卷 -->
+                <div
+                  class="px-6 py-2 bg-slate-50/60 text-slate-700 font-medium text-sm cursor-pointer hover:bg-slate-100 transition-colors"
+                  @click="toggleVolume(volume.id)"
+                >
+                  <div class="flex items-center gap-2">
+                    <svg
+                      class="w-3.5 h-3.5 transition-transform"
+                      :class="expandedVolumes.has(volume.id) ? 'rotate-90' : ''"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span>{{ volume.title }}</span>
+                    <span class="ml-auto text-xs text-slate-500">{{ volume.chapters.length }} 章</span>
+                  </div>
+                </div>
+
+                <!-- 章节列表 -->
+                <ul v-show="expandedVolumes.has(volume.id)">
+                  <li v-for="chapter in volume.chapters" :key="chapter.id">
+                    <button
+                      class="w-full text-left px-8 py-2.5 text-sm transition-colors duration-200"
+                      :class="selectedChapter?.chapter_number === chapter.chapter_number
+                        ? 'bg-indigo-50 text-indigo-600 font-semibold border-l-3 border-indigo-600'
+                        : 'hover:bg-slate-50 lg:hover:bg-white text-slate-700'"
+                      @click="selectChapter(chapter.chapter_number)"
+                    >
+                      <div class="flex items-start justify-between gap-2">
+                        <span class="truncate">{{ chapter.title || `第${chapter.chapter_number}章` }}</span>
+                        <span class="text-xs text-slate-400 flex-shrink-0">
+                          {{ chapterCache.has(chapter.chapter_number)
+                            ? calculateWordCount(chapterCache.get(chapter.chapter_number)?.content) + ' 字'
+                            : '-' }}
+                        </span>
+                      </div>
+                      <p v-if="chapter.summary" class="mt-1 text-xs text-slate-500 truncate">
+                        {{ chapter.summary }}
+                      </p>
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 空状态/加载中 -->
+        <div v-else-if="isLoadingTree" class="flex-1 flex items-center justify-center">
+          <div class="text-center">
+            <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-2"></div>
+            <p class="text-xs text-slate-500">加载大纲中...</p>
+          </div>
+        </div>
+
+        <div v-else class="flex-1 flex items-center justify-center">
+          <div class="text-center px-6 py-8">
+            <svg class="w-12 h-12 mx-auto mb-2 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <p class="text-xs text-slate-400">暂无大纲结构</p>
+            <p class="text-xs text-slate-400 mt-1">请先在"章节大纲"中创建</p>
+          </div>
+        </div>
       </aside>
 
       <section class="flex-1 flex flex-col bg-white h-full min-h-0 max-h-full overflow-hidden relative">
@@ -402,11 +476,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineProps, ref, watch } from 'vue'
+import { computed, defineProps, ref, watch, onMounted } from 'vue'
 import { NovelAPI } from '@/api/novel'
 import { AdminAPI } from '@/api/admin'
 import { useRoute } from 'vue-router'
 import { marked } from 'marked'
+import type { OutlineTreeResponse } from '@/types/outline'
 
 interface ChapterItem {
   chapter_number: number
@@ -449,7 +524,21 @@ const versionModal = ref({
 // 缓存已加载的章节详情
 const chapterCache = new Map<number, ChapterDetail>()
 
+// 树形大纲数据
+const outlineTree = ref<OutlineTreeResponse | null>(null)
+const isLoadingTree = ref(false)
+
+// 展开/折叠状态
+const expandedParts = ref(new Set<number>())
+const expandedVolumes = ref(new Set<number>())
+
 const chapters = computed(() => props.chapters || [])
+
+// 计算总卷数
+const totalVolumes = computed(() => {
+  if (!outlineTree.value) return 0
+  return outlineTree.value.parts.reduce((sum, part) => sum + part.volumes.length, 0)
+})
 
 // Tab 配置
 const tabs = [
@@ -645,6 +734,51 @@ const loadChapterDetail = async (chapterNumber: number) => {
   }
 }
 
+// 加载大纲树
+const loadOutlineTree = async () => {
+  isLoadingTree.value = true
+  try {
+    outlineTree.value = await NovelAPI.getOutlineTree(projectId)
+
+    // 默认展开所有篇和卷
+    if (outlineTree.value) {
+      outlineTree.value.parts.forEach(part => {
+        expandedParts.value.add(part.id)
+        part.volumes.forEach(volume => {
+          expandedVolumes.value.add(volume.id)
+        })
+      })
+    }
+  } catch (err) {
+    console.error('加载大纲树失败:', err)
+  } finally {
+    isLoadingTree.value = false
+  }
+}
+
+// 切换篇展开/折叠
+const togglePart = (partId: number) => {
+  if (expandedParts.value.has(partId)) {
+    expandedParts.value.delete(partId)
+  } else {
+    expandedParts.value.add(partId)
+  }
+}
+
+// 切换卷展开/折叠
+const toggleVolume = (volumeId: number) => {
+  if (expandedVolumes.value.has(volumeId)) {
+    expandedVolumes.value.delete(volumeId)
+  } else {
+    expandedVolumes.value.add(volumeId)
+  }
+}
+
+// 组件挂载时加载大纲树
+onMounted(() => {
+  loadOutlineTree()
+})
+
 watch(
   chapters,
   async (list) => {
@@ -699,6 +833,14 @@ defineExpose({
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.border-l-3 {
+  border-left-width: 3px;
+}
+
+.rotate-90 {
+  transform: rotate(90deg);
 }
 </style>
 

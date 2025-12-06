@@ -301,3 +301,52 @@ class ChapterOutlineUpdate(BaseModel):
     title: Optional[str] = None
     summary: Optional[str] = None
 
+
+# ------------------------------------------------------------------
+# Character 相关Schema
+# ------------------------------------------------------------------
+class CharacterBase(BaseModel):
+    """角色基础信息"""
+    name: str
+    identity: Optional[str] = None
+    personality: Optional[str] = None
+    goals: Optional[str] = None
+    abilities: Optional[str] = None
+    relationship_to_protagonist: Optional[str] = None
+    image_path: Optional[str] = None
+    group_type: Optional[str] = None
+    appearance_period: Optional[str] = None
+
+
+class CharacterCreate(CharacterBase):
+    """创建角色请求"""
+    pass
+
+
+class CharacterUpdate(BaseModel):
+    """更新角色请求"""
+    name: Optional[str] = None
+    identity: Optional[str] = None
+    personality: Optional[str] = None
+    goals: Optional[str] = None
+    abilities: Optional[str] = None
+    relationship_to_protagonist: Optional[str] = None
+    image_path: Optional[str] = None
+    group_type: Optional[str] = None
+    appearance_period: Optional[str] = None
+
+
+class CharacterDetail(CharacterBase):
+    """角色详情响应"""
+    id: int
+    project_id: str
+    position: int
+
+    class Config:
+        from_attributes = True
+
+
+class CharacterGroupsResponse(BaseModel):
+    """角色分组列表响应"""
+    groups: List[str]
+

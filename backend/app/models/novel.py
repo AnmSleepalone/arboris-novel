@@ -120,6 +120,10 @@ class BlueprintCharacter(Base):
     relationship_to_protagonist: Mapped[Optional[str]] = mapped_column(Text)
     extra: Mapped[Optional[dict]] = mapped_column(JSON)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # 新增字段
+    image_path: Mapped[Optional[str]] = mapped_column(String(500))
+    group_type: Mapped[Optional[str]] = mapped_column(String(64))
+    appearance_period: Mapped[Optional[str]] = mapped_column(Text)
 
     project: Mapped[NovelProject] = relationship(back_populates="characters")
 
